@@ -3,6 +3,10 @@ const bodyParser = require('body-parser')
 const app = express()
 const db = require('./queries')
 const port = 3000
+const jwt = require('jsonwebtoken')
+const dotenv = require('dotenv')
+
+dotenv.config()
 
 app.use(bodyParser.json())
 app.use(
@@ -11,15 +15,16 @@ app.use(
   })
 )
 
+//Queries start
+
 app.get('/', (request, response) => {
   response.json({ info: 'Node.js, Express, and Postgres API' })
 })
 
 const { PrismaClient } = require('@prisma/client')
-
 const prisma = new PrismaClient()
 
-app.get(`/users`, async (req, res) => {
+app.get(`/users`, authenticateToken, async (req, res) => {
   try{
     const users = await prisma.users.findMany()
     res.json(users)
@@ -29,7 +34,7 @@ app.get(`/users`, async (req, res) => {
 
 })
 
-app.get(`/users/:id`, async (req, res) => {
+app.get(`/users/:id`, authenticateToken, async (req, res) => {
   const {id} = req.params
   try{
     const user = await prisma.users.findUnique({
@@ -43,7 +48,7 @@ app.get(`/users/:id`, async (req, res) => {
   }
 })
 
-app.post(`/users`, async (req, res) => {
+app.post(`/users`, authenticateToken, async (req, res) => {
   const {name, email} = req.body
   try{
     const newUser = await prisma.users.create({
@@ -58,7 +63,7 @@ app.post(`/users`, async (req, res) => {
   }
 })
 
-app.put(`/users/:id`, async (req, res) => {
+app.put(`/users/:id`, authenticateToken, async (req, res) => {
   const {id} = req.params
   const {name, email} = req.body
   try{
@@ -77,7 +82,7 @@ app.put(`/users/:id`, async (req, res) => {
   }
 })
 
-app.delete(`/users/:id`, async (req, res) => {
+app.delete(`/users/:id`, authenticateToken, async (req, res) => {
   const {id} = req.params
   try{
     const deletedUser = await prisma.users.delete({
@@ -91,6 +96,34 @@ app.delete(`/users/:id`, async (req, res) => {
   }
 })
 
+//Queries end
+//JWT Authentication start
+
+process.env.TOKEN_SECRET
+
+function generateAccessToken(username) {
+  return jwt.sign(username, process.env.TOKEN_SECRET, { expiresIn: '1800s', algorithm: 'HS256' })
+}
+
+app.post('/token', (req, res) => {
+  const token = generateAccessToken({ email: req.body.email })
+  res.json(token)
+
+})
+
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization']
+  const token = authHeader && authHeader.split(' ')[1]
+
+  if (token == null) return res.sendStatus(401)
+
+  jwt.verify(token, process.env.TOKEN_SECRET, (err) => {
+    if(err) return console.log(err), res.sendStatus(403)
+    next()
+  })
+}
+
+// JWT Authentication end
 
 app.listen(port, () => {
   console.log(`App running on port ${port}.`)
